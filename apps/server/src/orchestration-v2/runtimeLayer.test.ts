@@ -1956,6 +1956,13 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         commandId: CommandId.make("runtime-layer-lifecycle-archive"),
         threadId,
       });
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      assert.includeMembers(
+        (yield* outbox.listByCommandId(CommandId.make("runtime-layer-lifecycle-archive"))).map(
+          (effect) => effect.request.type,
+        ),
+        ["terminal.cleanup", "preview.cleanup"],
+      );
       const archivedShell = yield* orchestrator.getShellSnapshot();
       assert.notInclude(
         archivedShell.threads.map((thread) => thread.id),
