@@ -68,6 +68,7 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import {
   applyAcpAgentTerminalUpdate,
+  retainAcpAgentTerminal,
   acpContentBlockDisplayText,
   embeddedTerminalIdsFromSessionUpdate,
   extractMcpToolCallIdentity,
@@ -4395,7 +4396,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           }
           const terminalKey = sessionScopedId(notification.sessionId, update.terminalId);
           const next = applyAcpAgentTerminalUpdate(agentTerminalsById.get(terminalKey), update);
-          agentTerminalsById.set(terminalKey, next);
+          retainAcpAgentTerminal(agentTerminalsById, terminalKey, next);
           if (context === null || notification.sessionId !== context.nativeThreadId) return true;
           const status =
             next.exitStatus === undefined

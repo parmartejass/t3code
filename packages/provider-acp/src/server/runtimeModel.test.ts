@@ -10,6 +10,7 @@ import {
   extractMcpToolCallIdentity,
   mergeToolCallState,
   parsePermissionRequest,
+  retainAcpAgentTerminal,
   parseSessionModeState,
   parseSessionUpdateEvent,
   sessionModelStateFromInitialize,
@@ -17,6 +18,7 @@ import {
   sessionUpdateIsReplay,
   syntheticLoadSessionResponseFromInitialize,
   toolCallProgressLength,
+  type AcpAgentTerminalState,
   type AcpToolCallState,
 } from "./runtimeModel.ts";
 
@@ -1443,5 +1445,29 @@ describe("embeddedTerminalIdsFromSessionUpdate", () => {
         },
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("retainAcpAgentTerminal", () => {
+  const exited = (outputBytes: number): AcpAgentTerminalState => ({
+    output: "",
+    outputBytes,
+    exitStatus: { exitCode: 0, signal: null },
+  });
+
+  it("evicts the oldest exited terminals past the count and byte limits", () => {
+    const terminals = new Map<string, AcpAgentTerminalState>();
+    retainAcpAgentTerminal(terminals, "running", { output: "", outputBytes: 1024 * 1024 });
+    for (let index = 0; index < 100; index += 1) {
+      retainAcpAgentTerminal(terminals, `exited-${index}`, exited(1024 * 1024));
+    }
+
+    const retained = [...terminals].filter(([, terminal]) => terminal.exitStatus !== undefined);
+    const retainedBytes = retained.reduce((total, [, terminal]) => total + terminal.outputBytes, 0);
+    expect(retained.length).toBeLessThanOrEqual(32);
+    expect(retainedBytes).toBeLessThanOrEqual(16 * 1024 * 1024);
+    expect(terminals.has("running")).toBe(true);
+    expect(terminals.has("exited-99")).toBe(true);
+    expect(terminals.has("exited-0")).toBe(false);
   });
 });

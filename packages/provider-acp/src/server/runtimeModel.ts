@@ -217,6 +217,41 @@ export function applyAcpAgentTerminalUpdate(
   return next;
 }
 
+const MAX_RETAINED_EXITED_AGENT_TERMINALS = 32;
+const MAX_RETAINED_EXITED_AGENT_TERMINAL_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Stores a terminal as most recent. Exited terminals stay only so later tool
+ * calls can still embed their output, so they share the client terminals'
+ * retention limits; running ones are never evicted.
+ */
+export function retainAcpAgentTerminal(
+  terminals: Map<string, AcpAgentTerminalState>,
+  key: string,
+  terminal: AcpAgentTerminalState,
+): void {
+  terminals.delete(key);
+  terminals.set(key, terminal);
+  const exited = Array.from(terminals).filter(
+    ([exitedKey, candidate]) => exitedKey !== key && candidate.exitStatus !== undefined,
+  );
+  let exitedCount = exited.length + (terminal.exitStatus === undefined ? 0 : 1);
+  let exitedBytes =
+    exited.reduce((total, [, candidate]) => total + candidate.outputBytes, 0) +
+    (terminal.exitStatus === undefined ? 0 : terminal.outputBytes);
+  for (const [oldestKey, oldest] of exited) {
+    if (
+      exitedCount <= MAX_RETAINED_EXITED_AGENT_TERMINALS &&
+      exitedBytes <= MAX_RETAINED_EXITED_AGENT_TERMINAL_BYTES
+    ) {
+      break;
+    }
+    terminals.delete(oldestKey);
+    exitedCount -= 1;
+    exitedBytes -= oldest.outputBytes;
+  }
+}
+
 export type AcpPlanUpdate =
   | {
       readonly nativePlanId: string;
