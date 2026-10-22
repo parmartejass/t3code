@@ -11,7 +11,7 @@ import type {
   RuntimeMode,
   ServerConfig as T3ServerConfig,
 } from "@t3tools/contracts";
-import { resolveProjectProviderInstanceEnabled } from "@t3tools/contracts";
+import { ProviderDriverKind, resolveProjectProviderInstanceEnabled } from "@t3tools/contracts";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
@@ -52,18 +52,6 @@ export type ProviderGroup = {
   readonly models: ReadonlyArray<ModelOption>;
   readonly updateRequired?: ProviderUpdateRequired;
 };
-
-function providerDisplayLabel(provider: {
-  readonly displayName?: string | undefined;
-  readonly driver: string;
-  readonly instanceId: string;
-}): string {
-  if (provider.displayName) return provider.displayName;
-  if (provider.driver === "codex") return "Codex";
-  if (provider.driver === "claudeAgent") return "Claude";
-  if (provider.driver === "pi") return "Pi";
-  return provider.instanceId;
-}
 
 function isProviderEnabledForProject(
   config: T3ServerConfig | null | undefined,
@@ -308,7 +296,7 @@ export function buildModelOptions(
       continue;
     }
 
-    const providerLabel = providerDisplayLabel(provider);
+    const providerLabel = resolveProviderInstanceDisplayName(provider);
     const providerBadge = providerBadgeFor(provider.instanceId);
     const updateRequired = provider.updateRequiredModels?.length
       ? { driver: provider.driver, updateRequiredModels: provider.updateRequiredModels }
@@ -382,8 +370,10 @@ export function buildModelOptions(
         (candidate) => candidate.slug === fallbackModelSelection.model,
       );
       const providerDriver =
-        provider?.driver ?? instanceConfig?.driver ?? fallbackModelSelection.instanceId;
-      const providerLabel = providerDisplayLabel({
+        provider?.driver ??
+        instanceConfig?.driver ??
+        ProviderDriverKind.make(fallbackModelSelection.instanceId);
+      const providerLabel = resolveProviderInstanceDisplayName({
         driver: providerDriver,
         displayName: provider?.displayName ?? instanceConfig?.displayName,
         instanceId: fallbackModelSelection.instanceId,

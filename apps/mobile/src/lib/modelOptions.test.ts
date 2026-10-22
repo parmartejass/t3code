@@ -71,6 +71,31 @@ describe("mobile model options", () => {
     ]);
   });
 
+  it("labels provider groups with the shared instance display name", () => {
+    const provider = (instanceId: string, driver: string, displayName?: string) => ({
+      instanceId,
+      driver,
+      ...(displayName ? { displayName } : {}),
+      enabled: true,
+      installed: true,
+      auth: { status: "authenticated" },
+      models: [{ slug: "model", name: "Model", isCustom: false, capabilities: null }],
+    });
+    // Drivers stamp their presentation name on every instance, so a second
+    // Codex account arrives as displayName "Codex" too.
+    const config = {
+      providers: [
+        provider("codex", "codex", "Codex"),
+        provider("codex_work", "codex", "Codex"),
+        provider("cursor", "cursor"),
+      ],
+    } as unknown as ServerConfig;
+
+    const groups = groupByProvider(buildModelOptions(config, null, undefined, null));
+
+    expect(groups.map((group) => group.providerLabel)).toEqual(["Codex", "Codex Work", "Cursor"]);
+  });
+
   it("does not materialize catalog defaults for missing stored options", () => {
     const config = {
       providers: [
