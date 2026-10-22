@@ -72,19 +72,42 @@ export type RemotePairingTargetError = typeof RemotePairingTargetError.Type;
 const hasSupportedRemoteBackendProtocol = (url: URL): boolean =>
   SUPPORTED_REMOTE_BACKEND_PROTOCOLS.has(url.protocol);
 
+const isIpLiteralHost = (host: string): boolean => {
+  try {
+    const hostname = new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, "");
+    if (hostname.includes(":")) return true;
+    const octets = hostname.split(".");
+    return (
+      octets.length === 4 &&
+      octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Adds a scheme to a typed backend host. A bare IP address is a LAN or tailnet server that
+ * `npx t3` serves over plain HTTP, and has no certificate to match an `https` guess.
+ */
+export const withRemoteBackendScheme = (rawValue: string): string => {
+  const withoutLeadingSlashes = rawValue.trim().replace(/^\/+/, "");
+  if (/^[a-zA-Z][a-zA-Z\d+-]*:\/\//.test(withoutLeadingSlashes)) {
+    return withoutLeadingSlashes;
+  }
+  const scheme = isIpLiteralHost(withoutLeadingSlashes) ? "http" : "https";
+  return `${scheme}://${withoutLeadingSlashes}`;
+};
+
 const normalizeRemoteBaseUrl = (
   rawValue: string,
   source: RemoteBackendUrlInvalidError["source"],
 ): URL => {
-  const trimmed = rawValue.trim();
-  if (!trimmed) {
+  if (!rawValue.trim()) {
     throw new RemoteBackendUrlMissingError();
   }
 
-  const withoutLeadingSlashes = trimmed.replace(/^\/+/, "");
-  const normalizedInput = /^[a-zA-Z][a-zA-Z\d+-]*:\/\//.test(withoutLeadingSlashes)
-    ? withoutLeadingSlashes
-    : `https://${withoutLeadingSlashes}`;
+  const normalizedInput = withRemoteBackendScheme(rawValue);
   let url: URL;
   try {
     url = new URL(normalizedInput);

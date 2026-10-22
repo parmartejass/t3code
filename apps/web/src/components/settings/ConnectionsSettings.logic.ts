@@ -3,6 +3,7 @@ import * as DateTime from "effect/DateTime";
 import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
 import { getPairingTokenFromUrl, setPairingTokenOnUrl } from "../../pairingUrl";
 import { readHostedPairingRequest } from "../../hostedPairing";
+import { withRemoteBackendScheme } from "@t3tools/shared/remote";
 import {
   type ServerClientSessionRecord,
   type ServerPairingLinkRecord,
@@ -244,7 +245,7 @@ export function parsePairingUrlFields(
     const urlLikeInput =
       /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//u.test(trimmed) || trimmed.startsWith("//")
         ? trimmed
-        : `https://${trimmed}`;
+        : withRemoteBackendScheme(trimmed);
     const url = new URL(urlLikeInput, window.location.origin);
     const hostedPairingRequest = readHostedPairingRequest(url);
     if (hostedPairingRequest) {

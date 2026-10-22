@@ -110,6 +110,22 @@ describe("remote", () => {
     });
   });
 
+  it("uses http for a schemeless IP address host, as mobile pairing does", () => {
+    expect(
+      resolveRemotePairingTarget({
+        host: "192.168.1.100:3773",
+        pairingCode: "pairing-token",
+      }),
+    ).toEqual({
+      credential: "pairing-token",
+      httpBaseUrl: "http://192.168.1.100:3773/",
+      wsBaseUrl: "ws://192.168.1.100:3773/",
+    });
+    expect(
+      resolveRemotePairingTarget({ host: "[::1]:3773", pairingCode: "pairing-token" }).httpBaseUrl,
+    ).toBe("http://[::1]:3773/");
+  });
+
   it("rejects unsupported direct pairing URL protocols", () => {
     let pairingUrlError: unknown;
     try {
