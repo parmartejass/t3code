@@ -4,6 +4,7 @@ import {
   MAX_SCRIPT_ID_LENGTH,
   type ModelSelection,
   type ProjectIconOverride,
+  PROJECT_MONOGRAM_MAX_GRAPHEMES,
   ProjectId,
   type ProjectScript,
   SCRIPT_RUN_COMMAND_PATTERN,
@@ -175,7 +176,8 @@ export function planProjectCommand(input: {
       if (project === undefined) return missingProject();
       if (
         command.projectIcon?.kind === "monogram" &&
-        Array.from(monogramSegmenter.segment(command.projectIcon.text)).length > 2
+        Array.from(monogramSegmenter.segment(command.projectIcon.text)).length >
+          PROJECT_MONOGRAM_MAX_GRAPHEMES
       ) {
         return invariant("Project monograms must contain at most two characters.");
       }
