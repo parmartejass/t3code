@@ -1,3 +1,5 @@
+import { PROJECT_MONOGRAM_MAX_GRAPHEMES, ProjectMonogramText } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { lucideIconNames } from "./lib/lucideIconByName";
 export { PROJECT_ICON_COLORS, projectIconColorClassName } from "./projectIconColors";
 
@@ -78,4 +80,15 @@ export function firstEmoji(value: string): string | null {
     return null;
   }
   return segment;
+}
+
+const isProjectMonogramShape = Schema.is(ProjectMonogramText);
+const monogramSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** The schema only caps code units; `project.meta.update` also caps graphemes. */
+export function isProjectMonogramText(text: string): boolean {
+  return (
+    isProjectMonogramShape(text) &&
+    Array.from(monogramSegmenter.segment(text)).length <= PROJECT_MONOGRAM_MAX_GRAPHEMES
+  );
 }

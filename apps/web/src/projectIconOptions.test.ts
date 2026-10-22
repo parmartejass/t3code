@@ -1,9 +1,16 @@
 import { AlarmClockCheck, ArrowDown01, Layers3 } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";
 import { lucideIconByName } from "./lib/lucideIconByName";
-import { filterProjectIconNames, firstEmoji } from "./projectIconOptions";
+import { filterProjectIconNames, firstEmoji, isProjectMonogramText } from "./projectIconOptions";
 
 describe("projectIconOptions", () => {
+  it("accepts only monograms the server accepts", () => {
+    expect(isProjectMonogramText("T3")).toBe(true);
+    expect(isProjectMonogramText("A\u0301B")).toBe(true);
+    expect(isProjectMonogramText("ABC")).toBe(false);
+    expect(isProjectMonogramText("")).toBe(false);
+  });
+
   it("resolves every offered icon name, including saved legacy spellings", () => {
     for (const name of filterProjectIconNames("")) expect(lucideIconByName(name)).toBeDefined();
     expect(lucideIconByName("layers-3")).toBe(Layers3);

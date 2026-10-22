@@ -73,6 +73,7 @@ const ProjectLucideIconName = TrimmedNonEmptyString.check(
 const ProjectEmoji = TrimmedNonEmptyString.check(Schema.isMaxLength(32));
 
 // Grapheme-count validation belongs to the server command boundary, not snapshot decoding.
+export const PROJECT_MONOGRAM_MAX_GRAPHEMES = 2;
 export const ProjectMonogramText = TrimmedNonEmptyString.check(
   Schema.isMaxLength(32),
   Schema.isPattern(/^[\p{L}\p{N}][\p{L}\p{N}\p{M}\u200c\u200d]*$/u),
