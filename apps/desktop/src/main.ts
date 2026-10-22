@@ -125,6 +125,23 @@ const layerDesktopSshEnvironment = Layer.unwrap(
   }),
 );
 
+/**
+ * Privileged `ipcMain` methods are only for the app's own renderer. A preview
+ * `<webview>` guest has its own `WebContents`, so `fromWebContents` resolves to
+ * its host window whose `webContents` is not the guest's — that excludes guests
+ * (and detached views, which return `null`). Requiring the window's top frame
+ * also excludes embedded subframes.
+ */
+const isTrustedAppIpcSender = (event: unknown): boolean => {
+  const { sender, senderFrame } = event as {
+    sender?: Electron.WebContents;
+    senderFrame?: Electron.WebFrameMain | null;
+  };
+  if (!sender) return false;
+  const owner = Electron.BrowserWindow.fromWebContents(sender);
+  return owner !== null && owner.webContents === sender && senderFrame === sender.mainFrame;
+};
+
 const layerElectron = Layer.mergeAll(
   ElectronApp.layer,
   ElectronDialog.layer,
@@ -136,7 +153,7 @@ const layerElectron = Layer.mergeAll(
   ElectronTheme.layer,
   ElectronUpdater.layer,
   ElectronWindow.layer,
-  DesktopIpc.layer(Electron.ipcMain),
+  DesktopIpc.layer(Electron.ipcMain, isTrustedAppIpcSender),
 );
 
 const layerDesktopFoundation = Layer.mergeAll(

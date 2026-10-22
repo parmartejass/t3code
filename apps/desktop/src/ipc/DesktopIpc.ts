@@ -19,6 +19,18 @@ export type DesktopIpcHandleListener = (
 
 export type DesktopIpcSyncListener = (event: DesktopIpcSyncEvent) => void;
 
+/**
+ * Every method registered here lives on the global `ipcMain`, which any
+ * `WebContents` in the process can reach — including the preview `<webview>`
+ * guests, which load untrusted pages with `contextIsolation` disabled. These
+ * methods hand out the local server bearer token, toggle network exposure, and
+ * run SSH and install flows, so a guest must never invoke them. The authorizer
+ * runs before every handler and sees the transport's own event, letting the
+ * owner confine these channels to the trusted app renderer (its top frame).
+ * Per-guest channels use `webContents.ipc` instead and never pass through here.
+ */
+export type DesktopIpcSenderAuthorizer = (event: unknown) => boolean;
+
 export interface DesktopIpcMain {
   removeHandler(channel: string): void;
   handle(channel: string, listener: DesktopIpcHandleListener): void;
@@ -52,6 +64,17 @@ export class DesktopIpcUnregistrationError extends Schema.TaggedError<DesktopIpc
   }
 }
 
+export class UnauthorizedIpcSenderError extends Schema.TaggedError<UnauthorizedIpcSenderError>()(
+  "UnauthorizedIpcSenderError",
+  {
+    channel: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Rejected an IPC call to ${this.channel} from an untrusted sender.`;
+  }
+}
+
 export const DesktopIpcError = Schema.Union([
   DesktopIpcRegistrationError,
   DesktopIpcUnregistrationError,
@@ -80,7 +103,10 @@ export class DesktopIpc extends Context.Service<
   }
 >()("@t3tools/desktop/ipc/DesktopIpc") {}
 
-export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
+export const make = (
+  ipcMain: DesktopIpcMain,
+  authorizeSender?: DesktopIpcSenderAuthorizer,
+): DesktopIpc["Service"] =>
   DesktopIpc.of({
     handle: Effect.fn("desktop.ipc.registerInvoke")(function* <E, R>({
       channel,
@@ -94,14 +120,17 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
         Effect.try({
           try: () => {
             ipcMain.removeHandler(channel);
-            ipcMain.handle(channel, (event, raw) =>
-              runPromise(
+            ipcMain.handle(channel, (event, raw) => {
+              if (authorizeSender !== undefined && !authorizeSender(event)) {
+                return Promise.reject(new UnauthorizedIpcSenderError({ channel }));
+              }
+              return runPromise(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
                   return yield* handler(raw, event);
                 }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invoke")),
-              ),
-            );
+              );
+            });
           },
           catch: (cause) =>
             new DesktopIpcRegistrationError({ handlerKind: "invoke", channel, cause }),
@@ -128,6 +157,10 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
           try: () => {
             ipcMain.removeAllListeners(channel);
             ipcMain.on(channel, (event) => {
+              if (authorizeSender !== undefined && !authorizeSender(event)) {
+                event.returnValue = undefined;
+                return;
+              }
               event.returnValue = runSync(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
@@ -152,7 +185,8 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
     }),
   });
 
-export const layer = (ipcMain: DesktopIpcMain) => Layer.succeed(DesktopIpc, make(ipcMain));
+export const layer = (ipcMain: DesktopIpcMain, authorizeSender?: DesktopIpcSenderAuthorizer) =>
+  Layer.succeed(DesktopIpc, make(ipcMain, authorizeSender));
 
 export interface DesktopIpcMethodRegistration<
   Payload,
