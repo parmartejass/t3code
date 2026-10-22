@@ -158,7 +158,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
   const baseDir = resolveDesktopBaseDir({
     homeDirectory,
-    joinPath: path.join,
+    path,
     t3Home: config.t3Home,
   });
   const rootDir = path.resolve(input.dirname, "../../..");

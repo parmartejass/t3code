@@ -37,7 +37,7 @@ export const resolveEarlyLinuxElectronOptionsFromProcess = (
   DesktopEarlyElectronStartup.resolveEarlyLinuxElectronOptions({
     env: process.env,
     homeDirectory,
-    joinPath: NodePath.posix.join,
+    path: NodePath.posix,
     readFileString: (path) => NodeFS.readFileSync(path, "utf8"),
   });
 
@@ -65,7 +65,7 @@ export const make = Effect.gen(function* () {
       DesktopEarlyElectronStartup.restoreEarlyLinuxDeviceScaleFactor({
         env: process.env,
         homeDirectory,
-        joinPath: NodePath.posix.join,
+        path: NodePath.posix,
         commandLine: Electron.app.commandLine,
         readFileString: (path) => NodeFS.readFileSync(path, "utf8"),
         writeFileString: (path, value) => {

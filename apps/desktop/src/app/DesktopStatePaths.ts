@@ -1,3 +1,4 @@
+import { resolveT3BaseDir, type T3BaseDirPath } from "@t3tools/shared/devHome";
 import * as Option from "effect/Option";
 
 export type JoinPath = (first: string, ...segments: string[]) => string;
@@ -12,12 +13,10 @@ function normalizeConfiguredBaseDir(t3Home: Option.Option<string>): Option.Optio
 
 export function resolveDesktopBaseDir(input: {
   readonly homeDirectory: string;
-  readonly joinPath: JoinPath;
+  readonly path: T3BaseDirPath;
   readonly t3Home: Option.Option<string>;
 }): string {
-  return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, ".t3"),
-  );
+  return resolveT3BaseDir(Option.getOrUndefined(input.t3Home), input);
 }
 
 export function resolveDesktopStateDir(input: {

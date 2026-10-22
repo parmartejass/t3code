@@ -9,13 +9,27 @@ import {
 } from "./DesktopEarlyElectronStartup.ts";
 
 describe("DesktopEarlyElectronStartup", () => {
-  const joinPath = NodePath.posix.join;
+  const path = NodePath.posix;
 
   it("reads the persisted linux password-store preference before Electron is ready", () => {
     const preference = resolveEarlyLinuxPasswordStorePreference({
       env: { T3CODE_HOME: "/home/user/.t3-test" },
       homeDirectory: "/home/user",
-      joinPath,
+      path,
+      readFileString: (path) => {
+        assert.equal(path, "/home/user/.t3-test/userdata/desktop-settings.json");
+        return JSON.stringify({ linuxPasswordStore: "kwallet6" });
+      },
+    });
+
+    assert.equal(preference, "kwallet6");
+  });
+
+  it("expands a home-relative T3CODE_HOME the way the backend does", () => {
+    const preference = resolveEarlyLinuxPasswordStorePreference({
+      env: { T3CODE_HOME: "~/.t3-test" },
+      homeDirectory: "/home/user",
+      path,
       readFileString: (path) => {
         assert.equal(path, "/home/user/.t3-test/userdata/desktop-settings.json");
         return JSON.stringify({ linuxPasswordStore: "kwallet6" });
@@ -29,7 +43,7 @@ describe("DesktopEarlyElectronStartup", () => {
     const preference = resolveEarlyLinuxPasswordStorePreference({
       env: { T3CODE_HOME: "/home/user/.t3-test" },
       homeDirectory: "/home/user",
-      joinPath,
+      path,
       readFileString: () => `{
         // manually edited setting
         "linuxPasswordStore": "gnome-libsecret",
@@ -43,7 +57,7 @@ describe("DesktopEarlyElectronStartup", () => {
     const preference = resolveEarlyLinuxPasswordStorePreference({
       env: {},
       homeDirectory: "/home/user",
-      joinPath,
+      path,
       readFileString: () => {
         throw new Error("missing");
       },
@@ -135,7 +149,7 @@ describe("Linux device scale persistence failures", () => {
   const input = {
     env: { T3CODE_HOME: "/isolated" },
     homeDirectory: "/home/user",
-    joinPath: NodePath.posix.join,
+    path: NodePath.posix,
   };
 
   it.each(["0", "Infinity", "garbage"])("ignores invalid persisted scale %j", (value) => {

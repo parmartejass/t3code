@@ -10,6 +10,36 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+export interface T3BaseDirPath {
+  join(...segments: string[]): string;
+  resolve(...segments: string[]): string;
+}
+
+/**
+ * The backend, the desktop shell, and the npm launcher must agree on where a
+ * `T3CODE_HOME` points, or they split state across two directories. A value
+ * set outside a shell (launchd, a .desktop file) arrives with `~` unexpanded.
+ */
+export function resolveT3BaseDir(
+  raw: string | undefined,
+  input: {
+    readonly homeDirectory: string;
+    readonly path: T3BaseDirPath;
+  },
+): string {
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return input.path.join(input.homeDirectory, ".t3");
+  }
+  if (trimmed === "~") {
+    return input.path.resolve(input.homeDirectory);
+  }
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+    return input.path.resolve(input.path.join(input.homeDirectory, trimmed.slice(2)));
+  }
+  return input.path.resolve(trimmed);
+}
+
 /**
  * The common dir is not necessarily named `.git`: a worktree of a bare repo
  * points at `<repo>.git/worktrees/<name>`, and `$GIT_COMMON_DIR` can be

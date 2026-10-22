@@ -72,4 +72,13 @@ describe("DesktopEnvironment", () => {
       assert.equal(production.stateDir, "/Users/alice/.t3/userdata");
     }),
   );
+
+  it.effect("resolves T3CODE_HOME to the same directory the backend uses", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment({}, { T3CODE_HOME: " ~/t3-alt " });
+
+      assert.equal(environment.baseDir, "/Users/alice/t3-alt");
+      assert.equal(environment.stateDir, "/Users/alice/t3-alt/userdata");
+    }),
+  );
 });

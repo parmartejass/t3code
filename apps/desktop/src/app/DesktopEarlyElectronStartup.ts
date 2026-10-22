@@ -1,3 +1,4 @@
+import type { T3BaseDirPath } from "@t3tools/shared/devHome";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -9,16 +10,12 @@ import {
   type LinuxPasswordStoreSwitch,
   type LinuxPasswordStorePreference,
 } from "../linuxSecretStorage.ts";
-import {
-  resolveDesktopBaseDir,
-  resolveDesktopStateDir,
-  type JoinPath,
-} from "./DesktopStatePaths.ts";
+import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 
 interface EarlyDesktopSettingsInput {
   readonly env: NodeJS.ProcessEnv;
   readonly homeDirectory: string;
-  readonly joinPath: JoinPath;
+  readonly path: T3BaseDirPath;
   readonly readFileString: (path: string) => string;
 }
 
@@ -52,21 +49,21 @@ const isDevelopmentEnvironment = (env: NodeJS.ProcessEnv): boolean =>
 function resolveEarlyDesktopSettingsPath(input: {
   readonly env: NodeJS.ProcessEnv;
   readonly homeDirectory: string;
-  readonly joinPath: JoinPath;
+  readonly path: T3BaseDirPath;
 }): string {
   const t3Home = Option.fromUndefinedOr(input.env.T3CODE_HOME);
   const baseDir = resolveDesktopBaseDir({
     homeDirectory: input.homeDirectory,
-    joinPath: input.joinPath,
+    path: input.path,
     t3Home,
   });
   const stateDir = resolveDesktopStateDir({
     baseDir,
     isDevelopment: isDevelopmentEnvironment(input.env),
-    joinPath: input.joinPath,
+    joinPath: input.path.join,
     t3Home,
   });
-  return input.joinPath(stateDir, "desktop-settings.json");
+  return input.path.join(stateDir, "desktop-settings.json");
 }
 
 export function resolveEarlyLinuxPasswordStorePreference(
@@ -173,7 +170,7 @@ export function restoreEarlyLinuxDeviceScaleFactor(
 ): void {
   // Keep this separate from desktop-settings.json: the settings service rewrites
   // that document, and Chromium needs the value before that service is available.
-  const path = input.joinPath(
+  const path = input.path.join(
     resolveEarlyDesktopSettingsPath(input),
     "..",
     "linux-device-scale-factor",
