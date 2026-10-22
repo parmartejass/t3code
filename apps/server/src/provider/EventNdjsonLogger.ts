@@ -592,6 +592,13 @@ const drainPending = Effect.fnUntraced(function* (input: {
 
   const retentionDue =
     input.now - input.state.lastRetentionAt >= input.options.retentionCheckIntervalMs;
+  if (retentionDue) {
+    // Sinks hold no file handle, so idle threads can be dropped and rebuilt on
+    // their next write. Keeping them would shield their files from retention.
+    for (const threadSegment of sinks.keys()) {
+      if (!recordsBySegment.has(threadSegment)) sinks.delete(threadSegment);
+    }
+  }
   const retention = retentionDue
     ? yield* Effect.promise(() =>
         enforceRetention({

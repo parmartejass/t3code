@@ -431,6 +431,33 @@ it.layer(NodeServices.layer)("EventNdjsonLogger", (it) => {
     }),
   );
 
+  it.effect("lets retention reclaim files of threads that stopped writing", () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-provider-log-"));
+      const basePath = NodePath.join(tempDir, "events.log");
+
+      try {
+        const store = yield* makeEventNdjsonLogStore(basePath, {
+          batchWindowMs: 0,
+          maxTotalBytes: 1_000,
+          retentionCheckIntervalMs: 1,
+        });
+        const native = store.logger("native");
+
+        for (const segment of ["thread-a", "thread-b", "thread-c"]) {
+          yield* TestClock.adjust("2 millis");
+          yield* native.write({ id: segment, payload: "x".repeat(500) }, ThreadId.make(segment));
+        }
+        yield* store.close();
+
+        assert.equal(NodeFS.existsSync(ownedLogPath(basePath, "thread-a")), false);
+        assert.equal(NodeFS.existsSync(ownedLogPath(basePath, "thread-c")), true);
+      } finally {
+        NodeFS.rmSync(tempDir, { recursive: true, force: true });
+      }
+    }),
+  );
+
   it.effect("attributes batches that were written before a later chunk fails", () =>
     Effect.gen(function* () {
       const records: ReadonlyArray<PendingRecord> = [
