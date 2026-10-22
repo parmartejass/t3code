@@ -185,13 +185,47 @@ export function setReviewGitSections(
   appAtomRegistry.set(reviewGitSectionsByThreadKeyAtom(threadKey), sections);
 }
 
+// Raw turn diffs can be megabytes each and their per-thread atoms stay alive,
+// so they share the parsed cache's bounds. Evicted turns refetch on selection.
+const reviewTurnDiffRecencyAtom = Atom.make(() => ({
+  entries: new Map<string, { threadKey: string; sectionId: string; characterCount: number }>(),
+  characterCount: 0,
+})).pipe(Atom.keepAlive, Atom.withLabel("mobile:review:turn-diff-recency"));
+
 export function setReviewTurnDiff(threadKey: string, sectionId: string, diff: string): void {
+  const recency = appAtomRegistry.get(reviewTurnDiffRecencyAtom);
+  const recencyKey = buildSectionCacheKey(threadKey, sectionId);
+  const previous = recency.entries.get(recencyKey);
+  if (previous) {
+    recency.entries.delete(recencyKey);
+    recency.characterCount -= previous.characterCount;
+  }
+  for (const [oldestKey, oldest] of recency.entries) {
+    if (
+      recency.entries.size < MAX_CACHED_REVIEW_DIFFS &&
+      recency.characterCount + diff.length <= MAX_CACHED_REVIEW_SOURCE_CHARACTERS
+    ) {
+      break;
+    }
+    recency.entries.delete(oldestKey);
+    recency.characterCount -= oldest.characterCount;
+    const oldestAtom = reviewTurnDiffByThreadKeyAtom(oldest.threadKey);
+    const { [oldest.sectionId]: _evicted, ...retained } = appAtomRegistry.get(oldestAtom);
+    appAtomRegistry.set(oldestAtom, retained);
+  }
+  recency.entries.set(recencyKey, { threadKey, sectionId, characterCount: diff.length });
+  recency.characterCount += diff.length;
+
   const atom = reviewTurnDiffByThreadKeyAtom(threadKey);
   const current = appAtomRegistry.get(atom);
   appAtomRegistry.set(atom, {
     ...current,
     [sectionId]: diff,
   });
+}
+
+export function getReviewTurnDiffsSnapshot(threadKey: string): Readonly<Record<string, string>> {
+  return appAtomRegistry.get(reviewTurnDiffByThreadKeyAtom(threadKey));
 }
 
 export function setReviewSelectedSectionId(threadKey: string, sectionId: string | null): void {
