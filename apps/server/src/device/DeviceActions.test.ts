@@ -43,6 +43,30 @@ const makeReady = (
 const udid = "SIM-1";
 
 describe("runDeviceAction", () => {
+  it.effect("quotes Android action values before adb gives them to the device shell", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      yield* runDeviceAction(ready, "android", {
+        type: "openUrl",
+        deviceId: "physical-android",
+        url: "https://example.test/it's; touch /sdcard/injected",
+      });
+
+      expect(calls).toEqual([
+        {
+          command: "adb",
+          args: [
+            "-s",
+            "physical-android",
+            "shell",
+            "'am' 'start' '-a' 'android.intent.action.VIEW' '-d' " +
+              "'https://example.test/it'\\''s; touch /sdcard/injected'",
+          ],
+        },
+      ]);
+    }),
+  );
+
   it.effect.each([
     ["emulator-5554", "Physical size: 2560x1600", "portrait", "-9.81:0:0"],
     ["emulator-5554", "Physical size: 2560x1600", "landscape_left", "0:9.81:0"],
@@ -54,10 +78,10 @@ describe("runDeviceAction", () => {
     ([deviceId, wmSize, value, expected]) =>
       Effect.gen(function* () {
         const { ready, calls } = makeReady((call) =>
-          call.args.join(" ").endsWith("shell wm size") ? { stdout: `${wmSize}\n` } : {},
+          call.args.at(-1) === "'wm' 'size'" ? { stdout: `${wmSize}\n` } : {},
         );
         yield* runDeviceAction(ready, "android", { type: "setOrientation", deviceId, value });
-        expect(calls.at(-1)?.args.at(-1)).toBe(expected);
+        expect(calls.at(-1)?.args.at(-1)?.split(" ").at(-1)?.replaceAll("'", "")).toBe(expected);
       }),
   );
 });
