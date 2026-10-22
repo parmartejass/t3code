@@ -304,6 +304,60 @@ it.effect.each([
   },
 );
 
+it.effect.each([
+  ["merged", 41],
+  ["closed", 40],
+] as const)("lists only %s Forgejo pull requests for that tab", ([state, expected]) => {
+  const closedPull = (number: number, merged: boolean) => ({
+    number,
+    title: `Closed ${number}`,
+    body: "",
+    html_url: `https://forgejo.test/maria/project/pulls/${number}`,
+    user: { login: "maria" },
+    state: "closed",
+    merged,
+    head: { ref: `feature-${number}`, sha: "head", repo: null },
+    base: { ref: "main", sha: "base", repo: null },
+    created_at: "2026-09-16T00:00:00Z",
+    updated_at: "2026-09-16T00:00:00Z",
+    closed_at: "2026-09-17T00:00:00Z",
+    merged_at: merged ? "2026-09-17T00:00:00Z" : null,
+    labels: [],
+  });
+  return Effect.gen(function* () {
+    const provider = yield* ForgejoPullRequestProvider.make;
+    const list = yield* provider.listChangeRequests({
+      cwd: "/repo",
+      repository: "maria/project",
+      host: "forgejo.test",
+      state,
+      involvement: "all",
+      viewer: "maria",
+      limit: 10,
+    });
+    assert.deepStrictEqual(
+      list.items.map((item) => item.number),
+      [expected],
+    );
+    assert.strictEqual(list.cursorAdvance, 2);
+  }).pipe(
+    Effect.provide(
+      Layer.mock(ForgejoCli.ForgejoCli)({
+        api: (input) => {
+          const [path, query] = input.path.split("?");
+          const params = new URLSearchParams(query);
+          if (path !== "repos/maria/project/pulls" || params.get("state") !== "closed") {
+            return Effect.die(`Unexpected Forgejo request: ${input.path}`);
+          }
+          const response =
+            params.get("page") === "1" ? [closedPull(40, false), closedPull(41, true)] : [];
+          return encodeJsonEffect(response).pipe(Effect.orDie, Effect.map(processOutput));
+        },
+      }),
+    ),
+  );
+});
+
 it.effect("gives Forgejo identities the browser URL of the login that serves them", () =>
   Effect.gen(function* () {
     const provider = yield* ForgejoSourceControlProvider.make;

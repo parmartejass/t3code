@@ -274,7 +274,10 @@ export const make = Effect.gen(function* () {
           for (const row of rows.slice(start)) {
             if (consumed >= input.limit) break;
             consumed++;
-            if (row) items.push(forgejoChangeRequest(row));
+            if (!row) continue;
+            // Forgejo's `closed` holds merged pulls too, so both tabs read it and keep their own.
+            const item = forgejoChangeRequest(row);
+            if (input.state === "all" || item.state === input.state) items.push(item);
           }
           more = result.more || rows.length - start > consumed - countBefore;
         }
