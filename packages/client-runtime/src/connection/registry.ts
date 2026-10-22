@@ -428,6 +428,25 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  // Removal clears the cache before followers finish stopping, and their
+  // finalizers flush unsaved data. Skipping writes for removed environments
+  // keeps that flush from restoring what removal (or sign-out) deleted.
+  const whileRegistered = <E>(environmentId: EnvironmentId, write: Effect.Effect<void, E>) =>
+    SubscriptionRef.get(entries).pipe(
+      Effect.flatMap((current) => (current.has(environmentId) ? write : Effect.void)),
+    );
+  const followerCache = Persistence.EnvironmentCacheStore.of({
+    ...cache,
+    saveShell: (environmentId, snapshot) =>
+      whileRegistered(environmentId, cache.saveShell(environmentId, snapshot)),
+    saveThread: (environmentId, snapshot) =>
+      whileRegistered(environmentId, cache.saveThread(environmentId, snapshot)),
+    saveServerConfig: (environmentId, config) =>
+      whileRegistered(environmentId, cache.saveServerConfig(environmentId, config)),
+    saveVcsRefs: (environmentId, cwd, refs) =>
+      whileRegistered(environmentId, cache.saveVcsRefs(environmentId, cwd, refs)),
+  });
+
   const followStream: EnvironmentRegistry["Service"]["followStream"] = <A, E, R>(
     environmentId: EnvironmentId,
     stream: Stream.Stream<A, E, R>,
@@ -449,10 +468,12 @@ export const make = Effect.gen(function* () {
                 Effect.match({
                   onFailure: () => Stream.empty,
                   onSuccess: (supervisor) =>
-                    Stream.provideService(
-                      stream,
-                      EnvironmentSupervisor.EnvironmentSupervisor,
-                      supervisor,
+                    stream.pipe(
+                      Stream.provideService(
+                        EnvironmentSupervisor.EnvironmentSupervisor,
+                        supervisor,
+                      ),
+                      Stream.provideService(Persistence.EnvironmentCacheStore, followerCache),
                     ),
                 }),
               ),

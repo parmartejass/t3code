@@ -458,6 +458,7 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
 
   return {
     layer,
+    cacheStore,
     storedTargets,
     shellCache,
     cacheClears,
@@ -661,6 +662,47 @@ describe("EnvironmentRegistry", () => {
           false,
         );
       }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect("keeps a removed environment's cache clear after its readers flush", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([TARGET]);
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const following = yield* Deferred.make<void>();
+        const flushed = yield* Deferred.make<void>();
+        yield* registry.start;
+
+        yield* Effect.forkChild(
+          registry
+            .followStream(
+              TARGET.environmentId,
+              Stream.unwrap(
+                Effect.gen(function* () {
+                  const cache = yield* Persistence.EnvironmentCacheStore;
+                  // Stands in for the shell state's flush of an unsaved snapshot.
+                  yield* Effect.addFinalizer(() =>
+                    cache
+                      .saveShell(TARGET.environmentId, CACHED_SNAPSHOT)
+                      .pipe(Effect.ignore, Effect.andThen(Deferred.succeed(flushed, undefined))),
+                  );
+                  yield* Deferred.succeed(following, undefined);
+                  return Stream.never;
+                }),
+              ),
+            )
+            .pipe(
+              Stream.runDrain,
+              Effect.provideService(Persistence.EnvironmentCacheStore, harness.cacheStore),
+            ),
+        );
+        yield* Deferred.await(following);
+
+        yield* registry.remove(TARGET.environmentId);
+        yield* Deferred.await(flushed);
+        expect((yield* Ref.get(harness.shellCache)).has(TARGET.environmentId)).toBe(false);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
 
