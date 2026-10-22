@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
@@ -249,8 +250,15 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       }),
   });
 
+  const layerSsh = Layer.mock(DesktopSshEnvironment.DesktopSshEnvironment)({
+    disconnectAll: Effect.sync(() => {
+      installSteps.push("ssh.disconnectAll");
+    }),
+  });
+
   const layer = DesktopUpdates.layer.pipe(
     Layer.provide(layerFileSystem),
+    Layer.provide(layerSsh),
     Layer.provideMerge(layerUpdater),
     Layer.provideMerge(layerWindow),
     Layer.provideMerge(layerBackend),

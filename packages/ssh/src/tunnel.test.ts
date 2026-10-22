@@ -260,6 +260,43 @@ describe("ssh tunnel scripts", () => {
     }),
   );
 
+  it.effect("disconnectAll stops every tunnel while the manager stays open", () =>
+    Effect.gen(function* () {
+      let killed = 0;
+      const spawner = ChildProcessSpawner.make((command) =>
+        Effect.sync(() => {
+          const args = commandArgs(command);
+          if (args.includes("-N")) return makeRunningProcess(() => killed++);
+          if (args.some((arg, index) => arg === "-s" && args[index + 1] === "--")) {
+            return makeSuccessfulProcess('{"remotePort":3773}\n');
+          }
+          return makeSuccessfulProcess("");
+        }),
+      );
+      const layer = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Layer.succeed(HttpClient.HttpClient, testHttpClient),
+        Layer.succeed(NetService.NetService, testNetService),
+        SshAuth.SshPasswordPrompt.disabledLayer,
+        SshTunnel.SshEnvironmentManager.layer({ resolveCliRunner: Effect.succeed(ARCHIVE) }),
+      );
+      yield* Effect.gen(function* () {
+        const manager = yield* SshTunnel.SshEnvironmentManager;
+        for (const host of ["devbox", "other"]) {
+          yield* manager.ensureEnvironment({
+            alias: host,
+            hostname: host,
+            username: null,
+            port: null,
+          });
+        }
+        yield* manager.disconnectAll;
+        assert.equal(killed, 2);
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    }),
+  );
+
   it.effect.each(["local tunnel", "remote server"] as const)(
     "waits for %s shutdown before reconnecting the same target",
     (stalledStep) =>

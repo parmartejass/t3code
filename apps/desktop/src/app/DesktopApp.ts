@@ -29,6 +29,7 @@ import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
+import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopRemoteUpdates from "../updates/DesktopRemoteUpdates.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
@@ -158,6 +159,13 @@ const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
     );
   },
 );
+
+// Same race as the pool: ssh tunnels run detached, so if quit or relaunch
+// exits before the layer scope closes them, they outlive the app.
+const disconnectSshEnvironments = Effect.fn("desktop.app.disconnectSshEnvironments")(function* () {
+  const sshEnvironment = yield* DesktopSshEnvironment.DesktopSshEnvironment;
+  yield* sshEnvironment.disconnectAll;
+});
 
 const bootstrap = Effect.gen(function* () {
   const state = yield* DesktopState.DesktopState;
@@ -344,10 +352,10 @@ const scopedProgram = Effect.scoped(
       // cascade, so leaving the WSL instance for its parent scope
       // finalizer means it gets hard-killed by the OS instead of
       // receiving SIGTERM + grace.
-      stopAllPoolInstances().pipe(
-        Effect.ensuring(rendererHistory.shutdown),
-        Effect.ensuring(shutdown.markComplete),
-      ),
+      Effect.all([stopAllPoolInstances(), disconnectSshEnvironments()], {
+        concurrency: "unbounded",
+        discard: true,
+      }).pipe(Effect.ensuring(rendererHistory.shutdown), Effect.ensuring(shutdown.markComplete)),
     );
 
     yield* startup;

@@ -152,6 +152,11 @@ export interface SshEnvironmentManagerShape {
   readonly disconnectEnvironment: (
     target: DesktopSshEnvironmentTarget,
   ) => Effect.Effect<void, SshEnvironmentEffectError, SshEnvironmentEffectContext>;
+  /**
+   * Closes every tunnel as manager shutdown does. Callers that exit before
+   * layer teardown finishes need this; detached ssh children outlive the app.
+   */
+  readonly disconnectAll: Effect.Effect<void>;
 }
 
 const RemoteLaunchResult = Schema.Struct({
@@ -1386,15 +1391,15 @@ const makeSshEnvironmentManager = Effect.fn("ssh/tunnel.SshEnvironmentManager.ma
     });
   });
 
-  yield* Scope.addFinalizer(
-    managerScope,
-    Effect.sync(() => [...tunnels.values()]).pipe(
-      Effect.flatMap((entries) =>
-        Effect.forEach(entries, closeTunnelEntry, { concurrency: "unbounded" }),
-      ),
-      Effect.ignore,
+  const disconnectAll = Effect.sync(() => [...tunnels.values()]).pipe(
+    Effect.flatMap((entries) =>
+      Effect.forEach(entries, closeTunnelEntry, { concurrency: "unbounded", discard: true }),
     ),
+    Effect.ignore,
+    Effect.uninterruptible,
   );
+
+  yield* Scope.addFinalizer(managerScope, disconnectAll);
 
   const promptForPassword = Effect.fn("ssh/tunnel.promptForPassword")(function* (
     target: DesktopSshEnvironmentTarget,
@@ -1785,7 +1790,7 @@ const makeSshEnvironmentManager = Effect.fn("ssh/tunnel.SshEnvironmentManager.ma
     );
   });
 
-  return SshEnvironmentManager.of({ ensureEnvironment, disconnectEnvironment });
+  return SshEnvironmentManager.of({ ensureEnvironment, disconnectEnvironment, disconnectAll });
 });
 
 /**

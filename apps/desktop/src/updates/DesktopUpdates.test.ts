@@ -521,7 +521,11 @@ describe("DesktopUpdates", () => {
         const result = yield* updates.install;
         assert.isTrue(result.accepted);
         assert.isFalse(yield* Ref.get(desktopState.quitting));
-        assert.deepEqual(harness.installSteps, ["quitAndInstall", "startBackend"]);
+        assert.deepEqual(harness.installSteps, [
+          "ssh.disconnectAll",
+          "quitAndInstall",
+          "startBackend",
+        ]);
         assert.equal(harness.updateRestartMarkers.size, 0);
         assert.equal(harness.installRecords.size, 0);
       }),
@@ -551,7 +555,7 @@ describe("DesktopUpdates", () => {
 
         const result = yield* updates.install;
         assert.equal(result.state.errorContext, "install");
-        assert.deepEqual(harness.installSteps, ["quitAndInstall"]);
+        assert.deepEqual(harness.installSteps, ["ssh.disconnectAll", "quitAndInstall"]);
         assert.isFalse((yield* (yield* pool.primary).snapshot).desiredRunning);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
@@ -645,7 +649,11 @@ describe("DesktopUpdates", () => {
         assert.equal(harness.quitAndInstalls(), 1);
         harness.emit("error", new Error("duplicate native installer error"));
         yield* flushCallbacks;
-        assert.deepEqual(harness.installSteps, ["quitAndInstall", "startBackend"]);
+        assert.deepEqual(harness.installSteps, [
+          "ssh.disconnectAll",
+          "quitAndInstall",
+          "startBackend",
+        ]);
 
         yield* Deferred.succeed(releaseRecovery, undefined);
         const failedResult = yield* Fiber.join(failedInstall);
