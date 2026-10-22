@@ -6,7 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 
-import { resolveGitWorktreePath, resolveWorktreeT3Home } from "./devHome.ts";
+import { resolveGitWorktreePath, resolveT3BaseDir, resolveWorktreeT3Home } from "./devHome.ts";
 
 const makeRepo = (
   kind:
@@ -40,6 +40,22 @@ const makeRepo = (
     }),
     ({ root }) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
   );
+
+describe("resolveT3BaseDir", () => {
+  it("expands ~ and resolves relative values like the backend", () => {
+    const path = NodePath.posix;
+    const resolve = (raw: string | undefined) =>
+      resolveT3BaseDir(raw, { homeDirectory: "/home/u", path });
+    assert.equal(resolve(undefined), "/home/u/.t3");
+    assert.equal(resolve(""), "/home/u/.t3");
+    assert.equal(resolve("  "), "/home/u/.t3");
+    assert.equal(resolve(" ~ "), "/home/u");
+    assert.equal(resolve("~/x"), "/home/u/x");
+    assert.equal(resolve("~\\x"), "/home/u/x");
+    assert.equal(resolve("/srv/t3"), "/srv/t3");
+    assert.equal(resolve("rel"), path.resolve("rel"));
+  });
+});
 
 describe("resolveGitWorktreePath", () => {
   it.effect("finds a worktree root from a nested directory", () =>

@@ -1,3 +1,4 @@
+import { resolveT3BaseDir } from "@t3tools/shared/devHome";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   listLoginShellCandidates,
@@ -122,9 +123,8 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 });
 
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
-  const { join, resolve } = yield* Path.Path;
-  if (!raw || raw.trim().length === 0) {
-    return join(yield* HostProcess.HomeDirectory, ".t3");
-  }
-  return resolve(yield* expandHomePath(raw.trim()));
+  return resolveT3BaseDir(raw, {
+    homeDirectory: yield* HostProcess.HomeDirectory,
+    path: yield* Path.Path,
+  });
 });
