@@ -1,14 +1,11 @@
 import {
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
   MUSE_DEFAULT_MODEL,
-  type ModelSelection,
   type ServerProviderModel,
   TextGenerationError,
 } from "@t3tools/contracts";
 import type { MuseSettings } from "../settings.ts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
-import { extractJsonObject } from "@t3tools/shared/schemaJson";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -16,20 +13,8 @@ import * as Schema from "effect/Schema";
 
 import { createMuseSdkHost, createMuseSdkHostEffect, type MuseSdkHost } from "./sdk.ts";
 import { museModelCapabilities, resolveMuseReasoningEffort } from "./modelCatalog.ts";
-import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
-import { investigationUnsupported } from "@t3tools/provider-core/server/textGenerationOperations";
-import {
-  buildBranchNamePrompt,
-  buildCommitMessagePrompt,
-  buildPrContentPrompt,
-  buildThreadTitlePrompt,
-} from "@t3tools/provider-core/server/textGenerationPrompts";
-import {
-  sanitizeCommitSubject,
-  sanitizePrTitle,
-  sanitizeThreadTitle,
-  toJsonSchemaObject,
-} from "@t3tools/provider-core/server/textGenerationUtils";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
 
 const SessionStarted = Schema.Struct({ session: Schema.Struct({ sessionId: Schema.String }) });
 const ItemNotification = Schema.Struct({
@@ -68,9 +53,6 @@ const decodeCompleted = Schema.decodeUnknownSync(TurnCompleted);
 const decodeApproval = Schema.decodeUnknownSync(ApprovalRequested);
 const decodeUserInput = Schema.decodeUnknownSync(UserInputRequested);
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
-const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
-
-type Operation = keyof ProviderTextGeneration;
 
 async function generateMuseText(
   host: MuseSdkHost,
@@ -204,12 +186,9 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
 ) {
   const { environment, modelCatalog = Effect.succeed([]), createHost } = options;
   const fileSystem = yield* FileSystem.FileSystem;
-  const runMuseJson = Effect.fn("runMuseJson")(function* <S extends Schema.Top>(input: {
-    operation: Operation;
-    prompt: string;
-    outputSchema: S;
-    modelSelection: ModelSelection;
-  }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
+  const runMuseJson = Effect.fn("runMuseJson")(function* <S extends Schema.Top>(
+    input: TextGenerationOperations.Request<S>,
+  ): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
     const { operation } = input;
     if (!settings.enabled) {
       return yield* new TextGenerationError({ operation, detail: "Muse Code is disabled." });
@@ -280,73 +259,11 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
         }),
       ),
     );
-    const decodeOutput = Schema.decodeEffect(input.outputSchema);
-    return yield* decodeJson(extractJsonObject(response)).pipe(
-      Effect.flatMap(decodeOutput),
-      Effect.mapError(
-        (cause) =>
-          new TextGenerationError({
-            operation,
-            detail: "Muse returned invalid structured output.",
-            cause,
-          }),
-      ),
-    );
+    return yield* TextGenerationOperations.decodeJsonReply(input, "Muse", response);
   });
 
-  const generateCommitMessage: ProviderTextGeneration["generateCommitMessage"] = Effect.fn(
-    "MuseTextGeneration.generateCommitMessage",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generateCommitMessage",
-      ...buildCommitMessagePrompt({ ...input, includeBranch: input.includeBranch === true }),
-      modelSelection: input.modelSelection,
-    });
-    return {
-      subject: sanitizeCommitSubject(generated.subject),
-      body: generated.body.trim(),
-      ...("branch" in generated && typeof generated.branch === "string"
-        ? { branch: sanitizeFeatureBranchName(generated.branch) }
-        : {}),
-    };
-  });
-  const generatePrContent: ProviderTextGeneration["generatePrContent"] = Effect.fn(
-    "MuseTextGeneration.generatePrContent",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generatePrContent",
-      ...buildPrContentPrompt(input),
-      modelSelection: input.modelSelection,
-    });
-    return { title: sanitizePrTitle(generated.title), body: generated.body.trim() };
-  });
-  const generateBranchName: ProviderTextGeneration["generateBranchName"] = Effect.fn(
-    "MuseTextGeneration.generateBranchName",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generateBranchName",
-      ...buildBranchNamePrompt(input),
-      modelSelection: input.modelSelection,
-    });
-    return { branch: sanitizeBranchFragment(generated.branch) };
-  });
-  const generateThreadTitle: ProviderTextGeneration["generateThreadTitle"] = Effect.fn(
-    "MuseTextGeneration.generateThreadTitle",
-  )(function* (input) {
-    const generated = yield* runMuseJson({
-      operation: "generateThreadTitle",
-      ...buildThreadTitlePrompt(input),
-      modelSelection: input.modelSelection,
-    });
-    return { title: sanitizeThreadTitle(generated.title) };
-  });
-  const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
-    Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
-  return {
-    generateCommitMessage,
-    generatePrContent,
-    generateBranchName,
-    generateThreadTitle,
-    generateReviewGuide,
-  } satisfies ProviderTextGeneration;
+  return TextGenerationOperations.fromRunner(
+    "MuseTextGeneration",
+    TextGenerationOperations.withoutInvestigation("Muse Code", runMuseJson),
+  );
 });

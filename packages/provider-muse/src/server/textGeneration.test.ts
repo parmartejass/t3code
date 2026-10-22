@@ -1,7 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import type { NotificationHandler } from "@muse-code/sdk";
-import { ProviderInstanceId, type ServerProviderModel } from "@t3tools/contracts";
+import {
+  type BranchNamingOptions,
+  ProviderInstanceId,
+  type ServerProviderModel,
+} from "@t3tools/contracts";
 import { MuseSettings } from "../settings.ts";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Effect from "effect/Effect";
@@ -257,6 +261,32 @@ it.layer(NodeServices.layer)("Muse text generation", (it) => {
       yield* Effect.promise(() => test.started);
       yield* Fiber.interrupt(fiber);
       expect(test.host.close).toHaveBeenCalledOnce();
+    }),
+  );
+
+  it.effect("applies the configured branch naming to the generated branch", () =>
+    Effect.gen(function* () {
+      const generate = (branch: string, naming: BranchNamingOptions) =>
+        Effect.gen(function* () {
+          const service = yield* fixture(finish(JSON.stringify({ branch }))).make;
+          return yield* service.generateBranchName({ ...titleInput, naming });
+        });
+      expect(
+        yield* generate("fix-login", { mode: "static", prefix: "t3code", instructions: "" }),
+      ).toEqual({ branch: "t3code/fix-login" });
+      expect(
+        yield* generate("Team/ABC-123_Fix", { mode: "custom", prefix: "", instructions: "Ids" }),
+      ).toEqual({ branch: "Team/ABC-123_Fix" });
+    }),
+  );
+
+  it.effect("keeps the thread title refinement flag", () =>
+    Effect.gen(function* () {
+      const service = yield* fixture(finish('{"title":"Fix login","needsRefinement":true}')).make;
+      expect(yield* service.generateThreadTitle(titleInput)).toEqual({
+        title: "Fix login",
+        needsRefinement: true,
+      });
     }),
   );
 
