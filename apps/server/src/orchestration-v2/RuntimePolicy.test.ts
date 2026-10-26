@@ -11,10 +11,10 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import { acpPermissionDisposition } from "@t3tools/provider-acp/server/clientPolicy";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
@@ -62,8 +62,10 @@ function makeThread(input: {
 }
 
 const grokInstanceId = ProviderInstanceId.make("grok");
+const antigravityInstanceId = ProviderInstanceId.make("antigravity");
 const supportedRuntimeModesByInstance = new Map<ProviderInstanceId, ReadonlyArray<RuntimeMode>>([
   [grokInstanceId, ["approval-required", "auto", "full-access"]],
+  [antigravityInstanceId, ["approval-required", "auto-accept-edits", "full-access"]],
 ]);
 const providerInstanceFor = (instanceId: ProviderInstanceId) =>
   ({
@@ -87,27 +89,47 @@ const layerTest = RuntimePolicy.layerFromProjectStore.pipe(
   Layer.provide(
     Layer.mock(ProjectStore.ProjectStoreV2)({
       get: () =>
-        Effect.succeed(
-          Option.some({
-            projectId,
-            title: "Project",
-            workspaceRoot: "/project-root",
-            defaultModelSelection: null,
-            defaultThreadEnvMode: null,
-            autoPull: false,
-            faviconPath: null,
-            projectIcon: null,
-            scripts: [],
-            createdAt: "2026-06-21T00:00:00.000Z",
-            updatedAt: "2026-06-21T00:00:00.000Z",
-            deletedAt: null,
-          }),
-        ),
+        Effect.succeedSome({
+          projectId,
+          title: "Project",
+          workspaceRoot: "/project-root",
+          defaultModelSelection: null,
+          defaultThreadEnvMode: null,
+          autoPull: false,
+          faviconPath: null,
+          projectIcon: null,
+          scripts: [],
+          createdAt: "2026-06-21T00:00:00.000Z",
+          updatedAt: "2026-06-21T00:00:00.000Z",
+          deletedAt: null,
+        }),
     }),
   ),
 );
 
 it.layer(layerTest)("RuntimePolicyV2", (it) => {
+  it.effect("asks for Antigravity command approval when a stored Auto thread falls back", () =>
+    Effect.gen(function* () {
+      const policy = yield* RuntimePolicy.RuntimePolicyV2;
+      const now = yield* DateTime.now;
+      const resolve = (runtimeMode: RuntimeMode) =>
+        policy.resolve({
+          thread: makeThread({ now, worktreePath: null, runtimeMode }),
+          modelSelection: { instanceId: antigravityInstanceId, model: "test-model" },
+        });
+      const request = {
+        sessionId: "session-1",
+        toolCall: { toolCallId: "command-1", title: "Run command", kind: "execute" as const },
+        options: [{ optionId: "allow", name: "Allow", kind: "allow_once" as const }],
+      };
+      const auto = yield* resolve("auto");
+      assert.equal(auto.runtimeMode, "approval-required");
+      assert.equal(acpPermissionDisposition(auto, request), "ask");
+      assert.equal(acpPermissionDisposition(yield* resolve("auto-accept-edits"), request), "ask");
+      assert.equal(acpPermissionDisposition(yield* resolve("full-access"), request), "allow");
+    }),
+  );
+
   it.effect("runs a mode the provider does not offer in Supervised", () =>
     Effect.gen(function* () {
       const policy = yield* RuntimePolicy.RuntimePolicyV2;
