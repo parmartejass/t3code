@@ -26,32 +26,49 @@ it.effect.each(["merge", "disable-auto-merge"] as const)(
                 // selected repository must still own every request and mutation.
                 const host = input.env?.GITLAB_HOST ?? otherHost;
                 const path = input.args[1];
-                const mutation = input.args[0] === "mr" || input.args.includes("POST");
+                const mutation =
+                  input.args[0] === "mr" || (input.args.includes("POST") && path !== "graphql");
                 if (mutation) mergedHosts.push(host);
                 else readHosts.push(host);
                 const response = mutation
                   ? {}
-                  : path?.includes("merge_requests/")
+                  : path === "graphql"
                     ? {
-                        iid: 7,
-                        title: "Merge request 7",
-                        web_url: `https://${host}/acme/web/-/merge_requests/7`,
-                        source_branch: "feature",
-                        target_branch: "main",
-                        created_at: "2026-07-01T00:00:00Z",
-                        updated_at: "2026-07-02T00:00:00Z",
-                        user: { can_merge: true },
-                        diff_refs: {
-                          head_sha: "a".repeat(40),
-                          base_sha: "b".repeat(40),
-                          start_sha: "b".repeat(40),
+                        data: {
+                          project: {
+                            mergeRequests: {
+                              nodes: [
+                                { iid: "7", diffStatsSummary: { additions: 2, deletions: 1 } },
+                              ],
+                            },
+                            mergeRequest: {
+                              diffStatsSummary: { fileCount: 1 },
+                              diffStats: [{ path: "src/a.ts", additions: 2, deletions: 1 }],
+                            },
+                          },
                         },
                       }
-                    : path === "user"
-                      ? { username: "reviewer" }
-                      : path?.includes("/labels?") || path?.includes("/users?")
-                        ? []
-                        : { merge_method: "merge", squash_option: "default_off" };
+                    : path?.includes("merge_requests/")
+                      ? {
+                          iid: 7,
+                          title: "Merge request 7",
+                          web_url: `https://${host}/acme/web/-/merge_requests/7`,
+                          source_branch: "feature",
+                          target_branch: "main",
+                          created_at: "2026-07-01T00:00:00Z",
+                          updated_at: "2026-07-02T00:00:00Z",
+                          user: { can_merge: true },
+                          diff_refs: {
+                            head_sha: "a".repeat(40),
+                            base_sha: "b".repeat(40),
+                            start_sha: "b".repeat(40),
+                          },
+                        }
+                      : path === "user"
+                        ? { username: "reviewer" }
+                        : path?.includes("/labels?") || path?.includes("/users?")
+                          ? []
+                          : { merge_method: "merge", squash_option: "default_off" };
                 return Effect.succeed(
                   TestSourceControlHost.processOutput(JSON.stringify(response)),
                 );
@@ -73,6 +90,21 @@ it.effect.each(["merge", "disable-auto-merge"] as const)(
         number: 7,
       };
       const detail = yield* provider.getChangeRequest(reference);
+      expect({ additions: detail.additions, deletions: detail.deletions }).toEqual({
+        additions: 2,
+        deletions: 1,
+      });
+      assert.isDefined(provider.getChangeRequestSummary);
+      expect((yield* provider.getChangeRequestSummary(reference)).additions).toBe(2);
+      assert.isDefined(provider.listChangeRequestStats);
+      expect(
+        yield* provider.listChangeRequestStats({ ...reference, changeRequests: [reference] }),
+      ).toEqual([{ repository: reference.repository, number: 7, additions: 2, deletions: 1 }]);
+      assert.isDefined(provider.getFileStats);
+      expect(yield* provider.getFileStats(reference)).toEqual({
+        files: [{ path: "src/a.ts", additions: 2, deletions: 1 }],
+        truncated: false,
+      });
       expect(yield* provider.getViewer(reference)).toBe("reviewer");
       assert.isDefined(provider.listRepositoryLabels);
       yield* provider.listRepositoryLabels(reference);
@@ -80,7 +112,7 @@ it.effect.each(["merge", "disable-auto-merge"] as const)(
       yield* provider.searchRepositoryAuthors(reference);
       yield* provider.runAction({ ...reference, action });
 
-      expect(readHosts).toEqual(Array(action === "merge" ? 6 : 5).fill(selectedHost));
+      expect(readHosts).toEqual(Array(action === "merge" ? 11 : 10).fill(selectedHost));
       expect({ url: detail.url, mutatedHosts: mergedHosts }).toEqual({
         url: `https://${selectedHost}/acme/web/-/merge_requests/7`,
         mutatedHosts: [selectedHost],
@@ -155,6 +187,7 @@ describe("getChangeRequest base freshness", () => {
           Effect.provide(
             Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({
               getMergeRequestDetail: () => Effect.succeed(detail),
+              listMergeRequestStats: () => Effect.succeed([]),
             }),
           ),
         );
@@ -166,7 +199,11 @@ describe("getChangeRequest base freshness", () => {
       }),
   );
 
-  const readWith = (divergence: { readonly divergedCommits?: number }) =>
+  const readWith = (
+    divergence: { readonly divergedCommits?: number },
+    stats: GitLabPullRequestCli.GitLabPullRequestCli["Service"]["listMergeRequestStats"] = () =>
+      Effect.succeed([]),
+  ) =>
     Effect.gen(function* () {
       const provider = yield* make;
       return yield* provider.getChangeRequest({
@@ -181,6 +218,7 @@ describe("getChangeRequest base freshness", () => {
           getMergeRequestDetail: () => Effect.succeed({ ...detail, ...divergence }),
           getProjectMergeCapabilities: () =>
             Effect.succeed({ merge: true, squash: true, rebase: true }),
+          listMergeRequestStats: stats,
         }),
       ),
     );
@@ -200,6 +238,62 @@ describe("getChangeRequest base freshness", () => {
 
       expect(changeRequest.baseComparison).toBe("unknown");
       expect(changeRequest.behindBy).toBeUndefined();
+    }),
+  );
+
+  it.effect("fills in the line counts the REST detail leaves out", () =>
+    Effect.gen(function* () {
+      const changeRequest = yield* readWith({}, () =>
+        Effect.succeed([{ repository: "acme/web", number: 7, additions: 40, deletions: 2 }]),
+      );
+
+      expect(changeRequest.additions).toBe(40);
+      expect(changeRequest.deletions).toBe(2);
+    }),
+  );
+
+  it.effect("reports an unauthenticated line count read instead of a detail without counts", () =>
+    Effect.gen(function* () {
+      const result = yield* Effect.result(
+        readWith({}, () =>
+          Effect.fail(
+            new GitLabCli.GitLabCliAuthenticationError({
+              operation: "execute",
+              command: "glab",
+              cwd: "/w",
+              cause: null,
+            }),
+          ),
+        ),
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "PullRequestProviderError", reason: "unauthenticated" },
+      });
+    }),
+  );
+
+  it.effect("gives linked threads line counts without reading the merge settings", () =>
+    Effect.gen(function* () {
+      const summary = yield* Effect.gen(function* () {
+        const provider = yield* make;
+        const read = provider.getChangeRequestSummary;
+        if (read === undefined) return yield* Effect.die("summary read missing");
+        return yield* read({ cwd: "/w", repository: "acme/web", host: "gitlab.com", number: 7 });
+      }).pipe(
+        Effect.provide(
+          Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({
+            getMergeRequestDetail: () => Effect.succeed(detail),
+            getProjectMergeCapabilities: () => Effect.die("linked threads skip merge settings"),
+            listMergeRequestStats: () =>
+              Effect.succeed([{ repository: "acme/web", number: 7, additions: 40, deletions: 2 }]),
+          }),
+        ),
+      );
+
+      expect(summary.additions).toBe(40);
+      expect(summary.deletions).toBe(2);
     }),
   );
 });
@@ -238,6 +332,7 @@ describe("merge request reads", () => {
     const provider = yield* make.pipe(
       Effect.provide(
         Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({
+          listMergeRequestStats: () => Effect.succeed([]),
           getMergeRequestDetail: (input) =>
             Effect.sync(() => {
               calls.detail += 1;
@@ -280,6 +375,11 @@ describe("merge request reads", () => {
       yield* checks(reference);
 
       expect(calls.detail).toBe(1);
+
+      const summary = provider.getChangeRequestSummary;
+      assert.isDefined(summary);
+      yield* summary(reference);
+      expect(calls.detail).toBe(2);
     }),
   );
 
