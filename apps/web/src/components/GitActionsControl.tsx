@@ -722,7 +722,10 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                     setPublishRepositoryOverride(event.target.value);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") {
+                    if (
+                      event.key === "Enter" &&
+                      !(event.nativeEvent.isComposing || event.keyCode === 229)
+                    ) {
                       event.preventDefault();
                       submitPublishRepository();
                     }
