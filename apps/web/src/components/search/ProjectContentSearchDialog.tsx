@@ -212,7 +212,10 @@ function OpenContentSearchDialog(props: {
           } else if (event.key === "ArrowUp" && matches.length > 0) {
             event.preventDefault();
             setSelectedIndex((current) => (current - 1 + matches.length) % matches.length);
-          } else if (event.key === "Enter") {
+          } else if (
+            event.key === "Enter" &&
+            !(event.nativeEvent.isComposing || event.keyCode === 229)
+          ) {
             if (!canOpenMatches) {
               event.preventDefault();
               return;

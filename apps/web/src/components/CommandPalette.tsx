@@ -2359,7 +2359,12 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
-    if (addProjectCloneFlow?.step === "repository" && event.key === "Enter") {
+    if (
+      addProjectCloneFlow?.step === "repository" &&
+      event.key === "Enter" &&
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229
+    ) {
       event.preventDefault();
       void submitAddProjectCloneFlow();
       return;
@@ -2383,6 +2388,8 @@ function OpenCommandPaletteDialog(props: {
     const shouldSubmitBrowsePath =
       canSubmitBrowsePath &&
       event.key === "Enter" &&
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229 &&
       (!hasHighlightedBrowseItem || isPrimaryModifierPressed(event));
 
     if (shouldSubmitBrowsePath) {

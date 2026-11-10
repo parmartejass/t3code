@@ -108,3 +108,26 @@ it("leaves dialog, unrelated input and question button shortcuts alone while the
   expect(stash().element().textContent).toContain("second prompt");
   await expect.element(editor()).toHaveValue("Unsent draft");
 });
+
+it("ignores the Enter that confirms an IME composition in the composer", async () => {
+  await using _screen = await render(<Composer />);
+  await focus(editor().element());
+  await press("{ArrowDown}");
+
+  const composingEnter = new KeyboardEvent("keydown", {
+    key: "Enter",
+    isComposing: true,
+    keyCode: 229,
+    bubbles: true,
+    cancelable: true,
+  });
+  await act(async () => {
+    editor().element().dispatchEvent(composingEnter);
+  });
+  expect(composingEnter.defaultPrevented).toBe(false);
+  expect(stash().element().textContent).toContain("first prompt");
+  await expect.element(editor()).toHaveValue("Unsent draft");
+
+  await press("{Enter}");
+  await expect.element(editor()).toHaveValue("second prompt");
+});

@@ -905,7 +905,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   onRequestClose?.();
                   return;
                 }
-                if (e.key === "Enter" && highlightedModelKeyRef.current) {
+                if (
+                  e.key === "Enter" &&
+                  !(e.nativeEvent.isComposing || e.keyCode === 229) &&
+                  highlightedModelKeyRef.current
+                ) {
                   (e as typeof e & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
                   e.preventDefault();
                   e.stopPropagation();
