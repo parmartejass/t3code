@@ -175,7 +175,11 @@ export function PreviewChromeRow({
                     setInputFocused(false);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") submit(event);
+                    if (
+                      event.key === "Enter" &&
+                      !(event.nativeEvent.isComposing || event.keyCode === 229)
+                    )
+                      submit(event);
                     if (event.key === "Escape") {
                       event.preventDefault();
                       setDraft(url);

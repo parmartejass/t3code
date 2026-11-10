@@ -602,7 +602,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   };
   const handleRenameInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     event.stopPropagation();
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !(event.nativeEvent.isComposing || event.keyCode === 229)) {
       event.preventDefault();
       renamingCommittedRef.current = true;
       void commitRename(threadRef, renamingTitle, thread.title);
@@ -2422,7 +2422,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 value={projectRenameTitle}
                 onChange={(event) => setProjectRenameTitle(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
+                  if (
+                    event.key === "Enter" &&
+                    !(event.nativeEvent.isComposing || event.keyCode === 229)
+                  ) {
                     event.preventDefault();
                     void submitProjectRename();
                   }

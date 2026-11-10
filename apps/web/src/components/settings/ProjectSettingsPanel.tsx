@@ -493,7 +493,11 @@ function ProjectDetail({
                   void renameGroup(event.currentTarget.value, wasEdited);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (
+                    event.key === "Enter" &&
+                    !(event.nativeEvent.isComposing || event.keyCode === 229)
+                  )
+                    event.currentTarget.blur();
                 }}
               />
             }
