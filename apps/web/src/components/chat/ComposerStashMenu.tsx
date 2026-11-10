@@ -97,7 +97,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
         }
         return;
       }
-      if (event.key === "Enter") {
+      if (event.key === "Enter" && !(event.isComposing || event.keyCode === 229)) {
         // A focused control inside the row (the delete button) owns its own
         // activation; swallowing Enter here would restore instead of delete.
         if (event.target instanceof HTMLElement && event.target.closest("button[aria-label]")) {

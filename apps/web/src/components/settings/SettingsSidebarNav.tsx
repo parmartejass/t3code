@@ -231,7 +231,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       setActiveResultIndex((activeResultIndex - 1 + results.length) % results.length);
       return;
     }
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !(event.nativeEvent.isComposing || event.keyCode === 229)) {
       event.preventDefault();
       const result = results[activeResultIndex];
       if (result) handleSearchResultClick(result);
